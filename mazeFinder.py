@@ -91,7 +91,7 @@ class SolutionTime:
         self.timestamp = pygame.time.get_ticks()
 
 def generate_maze(size):
-    """Generate a solvable random maze using recursive backtracking."""
+    # Generate a solvable random maze using recursive backtracking.
     maze = [[1 for _ in range(size)] for _ in range(size)]
 
     def carve_passages(cx, cy):
@@ -132,13 +132,14 @@ button_height = 50
 buttons = {
     'bfs': Button(sidebar_x, 50, button_width, button_height, "Solve by BFS"),
     'dfs': Button(sidebar_x, 120, button_width, button_height, "Solve by DFS"),
-    'manual': Button(sidebar_x, 190, button_width, button_height, "Try Yourself"),
+    'astar': Button(sidebar_x, 190, button_width, button_height, "Solve by astar"),
+    'manual': Button(sidebar_x, 260, button_width, button_height, "Try Yourself"),
     'new_maze': Button(sidebar_x, WINDOW_HEIGHT - 70, button_width, button_height, 
                       "New Maze", NEW_MAZE_BUTTON_COLOR, NEW_MAZE_HOVER_COLOR)
 }
 
 def draw_maze(visited=set(), path=[]):
-    """Draw the maze, agent, and additional visualization."""
+    # Draw the maze and agent.
     for row_idx, row in enumerate(maze):
         for col_idx, cell in enumerate(row):
             x, y = col_idx * CELL_SIZE, row_idx * CELL_SIZE
@@ -162,13 +163,13 @@ def draw_maze(visited=set(), path=[]):
     pygame.draw.rect(screen, BLUE, (agent_x, agent_y, CELL_SIZE, CELL_SIZE))
 
 def draw_sidebar():
-    """Draw the sidebar with buttons."""
+    # Draw the sidebar with buttons.
     pygame.draw.rect(screen, SIDEBAR_COLOR, (MAZE_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
     for button in buttons.values():
         button.draw(screen)  # Pass the screen surface to the draw method
 
 def dfs_solve(maze, start, goal):
-    """Solve the maze using DFS with visualization."""
+    # Solve the maze using DFS with visualization.
     stack = [start]
     visited = set()
     parent_map = {}
@@ -201,7 +202,7 @@ def dfs_solve(maze, start, goal):
     return [], nodes_visited  # Return empty path if unsolvable
 
 def bfs_solve(maze, start, goal):
-    """Solve the maze using BFS with visualization."""
+    # Solve the maze using BFS with visualization.
     queue = deque([start])
     visited = set()
     parent_map = {}
@@ -231,10 +232,50 @@ def bfs_solve(maze, start, goal):
             if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
                 queue.append((nx, ny))
                 parent_map[(nx, ny)] = current
-    return [], nodes_visited  # Return empty path if unsolvable
+    return [], nodes_visited
+
+import heapq
+
+def astar_solve(maze, start, goal):
+    open_set = [(0, start)]
+    closed_set = set()
+    parent_map = {}
+    nodes_visited = 0
+
+    while open_set:
+        current = heapq.heappop(open_set)[1]
+        if current in closed_set:
+            continue
+        closed_set.add(current)
+        nodes_visited += 1
+
+        draw_maze(visited=closed_set)
+        pygame.display.flip()
+        pygame.time.delay(50)
+
+        if current == goal:
+            path = []
+            while current:
+                path.append(current)
+                current = parent_map.get(current)
+            return path[::-1], nodes_visited
+
+        x, y = current
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in closed_set and maze[nx][ny] == 0:
+                g_score = parent_map.get((x, y), {}).get('g_score', 0) + 1
+                f_score = g_score + heuristic((nx, ny),goal)
+                heapq.heappush(open_set, (f_score, (nx, ny)))
+                parent_map[(nx, ny)] = {'parent': (x, y), 'g_score': g_score}
+
+    return [], nodes_visited
+
+def heuristic(node,goal): # This is just used for AStar (Manhattan distance)
+        return abs(node[0] - goal[0]) + abs(node[1] - goal[1])
 
 def show_message(message, duration=2000):
-    """Show a message in the center of the maze area."""
+    # Show a message in the center of the maze area.
     text_surface = font.render(message, True, BLACK)
     text_rect = text_surface.get_rect(center=(MAZE_WIDTH // 2, WINDOW_HEIGHT // 2))
     background_rect = text_rect.inflate(20, 20)
@@ -256,7 +297,7 @@ def show_message(message, duration=2000):
         pygame.time.delay(10)
 
 def format_time(seconds):
-    """Format time in seconds to a readable string."""
+    # Return string that represents time (takes secnds as input)
     minutes = int(seconds // 60)
     seconds = seconds % 60
     if minutes > 0:
@@ -264,9 +305,9 @@ def format_time(seconds):
     return f"{seconds:.3f}s"
 
 def draw_solution_times():
-    """Draw all recorded solution times and stats on the sidebar."""
+    # Draw all recorded solution times and stats on the sidebar.
     start_y = 250
-    for i, sol_time in enumerate(solution_times):
+    for i, sol_time in enumerate(solution_times): # Since we need both the index and solution time, use enumerate
         time_text = f"{sol_time.method}: {format_time(sol_time.time)}"
         path_text = f"Path Length: {sol_time.path_length}"
         nodes_text = f"Nodes Visited: {sol_time.nodes_visited}"
@@ -275,13 +316,13 @@ def draw_solution_times():
         path_surface = small_font.render(path_text, True, BLACK)
         nodes_surface = small_font.render(nodes_text, True, BLACK)
 
-        y_offset = start_y + i * 75
+        y_offset = start_y + i * 200
         screen.blit(time_surface, (sidebar_x, y_offset))
         screen.blit(path_surface, (sidebar_x, y_offset + 20))
         screen.blit(nodes_surface, (sidebar_x, y_offset + 40))
 
 def solve_with_timer(solver_func, maze, start, goal):
-    """Run the solver and measure time, nodes visited, and path length."""
+    # Run the solver and measure time, nodes visited, and path length.
     start_time = time.time()
     path, nodes_visited = solver_func(maze, start, goal)
     end_time = time.time()
@@ -289,14 +330,14 @@ def solve_with_timer(solver_func, maze, start, goal):
     return path, end_time - start_time, path_length, nodes_visited
 
 def draw_solve_time(solve_time, x, y):
-    """Draw the solving time on the sidebar."""
+    #Draw the solving time on the sidebar.
     time_text = f"Time: {solve_time:.3f}s"
     time_surface = small_font.render(time_text, True, BLACK)
     screen.blit(time_surface, (x, y))
 
 # Modified movement functions for smoother animation
 def move_agent_along_path(path):
-    """Move the agent smoothly along the solution path."""
+    # Move the agent smoothly along the solution path.
     global agent_pos
     current_pos = list(agent_pos)
     
@@ -322,7 +363,7 @@ def move_agent_along_path(path):
     agent_pos = list(path[-1])
 
 def try_move(dx, dy):
-    """Try to move the agent with smooth animation."""
+    # Try to move the agent with smooth animation.
     global agent_pos, user_start_time
     new_x, new_y = agent_pos[0] + dx, agent_pos[1] + dy
     
@@ -334,7 +375,7 @@ def try_move(dx, dy):
         maze[new_x][new_y] == 0):
         # Animate movement
         start_x, start_y = agent_pos
-        for t in range(TRANSITION_SPEED + 1):
+        for t in range(TRANSITION_SPEED + 1): # This makes the agent smoother by altering their speed through the maze in increments instead of by full bloks
             progress = t / TRANSITION_SPEED
             current_x = start_x + dx * progress
             current_y = start_y + dy * progress
@@ -357,6 +398,13 @@ def try_move(dx, dy):
             pygame.time.delay(500)
             agent_pos = list(start_pos)
             user_start_time = None
+
+
+
+
+
+
+
 
 # Main game loop
 clock = pygame.time.Clock()
@@ -383,6 +431,10 @@ while True:
                 elif button_id == 'dfs':
                     path, solve_time, path_length, nodes_visited = solve_with_timer(dfs_solve, maze, start_pos, goal_pos)
                     solution_times.append(SolutionTime("DFS", solve_time, path_length, nodes_visited))
+                    move_agent_along_path(path)
+                elif button_id == 'astar':
+                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_solve, maze, start_pos, goal_pos)
+                    solution_times.append(SolutionTime("ASTAR", solve_time, path_length, nodes_visited))
                     move_agent_along_path(path)
                 elif button_id == 'manual':
                     manual_mode = True

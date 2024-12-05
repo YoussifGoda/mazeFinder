@@ -81,6 +81,14 @@ class Button:
             self.click_animation = 4
             return True
         return False
+        
+class SolutionTime:
+    def __init__(self, method, time, path_length, nodes_visited):
+        self.method = method
+        self.time = time
+        self.path_length = path_length
+        self.nodes_visited = nodes_visited
+        self.timestamp = pygame.time.get_ticks()
 
 def generate_maze(size):
     """Generate a solvable random maze using recursive backtracking."""
@@ -159,48 +167,19 @@ def draw_sidebar():
     for button in buttons.values():
         button.draw(screen)  # Pass the screen surface to the draw method
 
-def bfs_solve(maze, start, goal):
-    """Solve the maze using BFS with visualization."""
-    queue = deque([start])
-    visited = set()
-    parent_map = {}
-
-    while queue:
-        current = queue.popleft()
-        if current in visited:
-            continue
-        visited.add(current)
-
-        draw_maze(visited=visited)
-        pygame.display.flip()
-        pygame.time.delay(50)
-
-        if current == goal:
-            path = []
-            while current:
-                path.append(current)
-                current = parent_map.get(current)
-            return path[::-1]
-
-        x, y = current
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
-                queue.append((nx, ny))
-                parent_map[(nx, ny)] = current
-    return []
-
 def dfs_solve(maze, start, goal):
     """Solve the maze using DFS with visualization."""
     stack = [start]
     visited = set()
     parent_map = {}
+    nodes_visited = 0  # Count nodes visited
 
     while stack:
         current = stack.pop()
         if current in visited:
             continue
         visited.add(current)
+        nodes_visited += 1  # Increment nodes visited
 
         draw_maze(visited=visited)
         pygame.display.flip()
@@ -211,7 +190,7 @@ def dfs_solve(maze, start, goal):
             while current:
                 path.append(current)
                 current = parent_map.get(current)
-            return path[::-1]
+            return path[::-1], nodes_visited  # Return path and nodes visited
 
         x, y = current
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
@@ -219,7 +198,40 @@ def dfs_solve(maze, start, goal):
             if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
                 stack.append((nx, ny))
                 parent_map[(nx, ny)] = current
-    return []
+    return [], nodes_visited  # Return empty path if unsolvable
+
+def bfs_solve(maze, start, goal):
+    """Solve the maze using BFS with visualization."""
+    queue = deque([start])
+    visited = set()
+    parent_map = {}
+    nodes_visited = 0  # Count nodes visited
+
+    while queue:
+        current = queue.popleft()
+        if current in visited:
+            continue
+        visited.add(current)
+        nodes_visited += 1  # Increment nodes visited
+
+        draw_maze(visited=visited)
+        pygame.display.flip()
+        pygame.time.delay(50)
+
+        if current == goal:
+            path = []
+            while current:
+                path.append(current)
+                current = parent_map.get(current)
+            return path[::-1], nodes_visited  # Return path and nodes visited
+
+        x, y = current
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
+                queue.append((nx, ny))
+                parent_map[(nx, ny)] = current
+    return [], nodes_visited  # Return empty path if unsolvable
 
 def show_message(message, duration=2000):
     """Show a message in the center of the maze area."""
@@ -243,12 +255,38 @@ def show_message(message, duration=2000):
         pygame.display.flip()
         pygame.time.delay(10)
 
+def format_time(seconds):
+    """Format time in seconds to a readable string."""
+    minutes = int(seconds // 60)
+    seconds = seconds % 60
+    if minutes > 0:
+        return f"{minutes}m {seconds:.1f}s"
+    return f"{seconds:.3f}s"
+
+def draw_solution_times():
+    """Draw all recorded solution times and stats on the sidebar."""
+    start_y = 250
+    for i, sol_time in enumerate(solution_times):
+        time_text = f"{sol_time.method}: {format_time(sol_time.time)}"
+        path_text = f"Path Length: {sol_time.path_length}"
+        nodes_text = f"Nodes Visited: {sol_time.nodes_visited}"
+
+        time_surface = small_font.render(time_text, True, BLACK)
+        path_surface = small_font.render(path_text, True, BLACK)
+        nodes_surface = small_font.render(nodes_text, True, BLACK)
+
+        y_offset = start_y + i * 75
+        screen.blit(time_surface, (sidebar_x, y_offset))
+        screen.blit(path_surface, (sidebar_x, y_offset + 20))
+        screen.blit(nodes_surface, (sidebar_x, y_offset + 40))
+
 def solve_with_timer(solver_func, maze, start, goal):
-    """Run the solver and measure time."""
+    """Run the solver and measure time, nodes visited, and path length."""
     start_time = time.time()
-    path = solver_func(maze, start, goal)
+    path, nodes_visited = solver_func(maze, start, goal)
     end_time = time.time()
-    return path, end_time - start_time
+    path_length = len(path)
+    return path, end_time - start_time, path_length, nodes_visited
 
 def draw_solve_time(solve_time, x, y):
     """Draw the solving time on the sidebar."""
@@ -285,8 +323,13 @@ def move_agent_along_path(path):
 
 def try_move(dx, dy):
     """Try to move the agent with smooth animation."""
-    global agent_pos
+    global agent_pos, user_start_time
     new_x, new_y = agent_pos[0] + dx, agent_pos[1] + dy
+    
+    # Start timing on first move
+    if user_start_time is None and manual_mode:
+        user_start_time = time.time()
+    
     if (0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE and 
         maze[new_x][new_y] == 0):
         # Animate movement
@@ -306,16 +349,23 @@ def try_move(dx, dy):
         agent_pos = [new_x, new_y]
         
         # Check if goal is reached
-        if (new_x, new_y) == goal_pos:
-            show_message("Goal Reached!")
-            pygame.time.delay(500)  # Short delay before resetting
-            agent_pos = list(start_pos)  # Reset to start
+        if (new_x, new_y) == goal_pos and manual_mode:
+            end_time = time.time()
+            solve_time = end_time - user_start_time
+            #solution_times.append(SolutionTime("Manual", solve_time))
+            #show_message(f"Goal Reached! Time: {format_time(solve_time)}")
+            pygame.time.delay(500)
+            agent_pos = list(start_pos)
+            user_start_time = None
 
 # Main game loop
 clock = pygame.time.Clock()
 manual_mode = False
 last_solve_time = None
 solve_method = None
+solution_times = []  # List to store multiple solution times
+user_start_time = None  # Track when user starts solving
+
 
 while True:
     for event in pygame.event.get():
@@ -327,25 +377,23 @@ while True:
         for button_id, button in buttons.items():
             if button.handle_event(event):
                 if button_id == 'bfs':
-                    solution_path, solve_time = solve_with_timer(bfs_solve, maze, start_pos, goal_pos)
-                    last_solve_time = solve_time
-                    solve_method = 'BFS'
-                    move_agent_along_path(solution_path)
+                     path, solve_time, path_length, nodes_visited = solve_with_timer(bfs_solve, maze, start_pos, goal_pos)
+                     solution_times.append(SolutionTime("BFS", solve_time, path_length, nodes_visited))
+                     move_agent_along_path(path)
                 elif button_id == 'dfs':
-                    solution_path, solve_time = solve_with_timer(dfs_solve, maze, start_pos, goal_pos)
-                    last_solve_time = solve_time
-                    solve_method = 'DFS'
-                    move_agent_along_path(solution_path)
+                    path, solve_time, path_length, nodes_visited = solve_with_timer(dfs_solve, maze, start_pos, goal_pos)
+                    solution_times.append(SolutionTime("DFS", solve_time, path_length, nodes_visited))
+                    move_agent_along_path(path)
                 elif button_id == 'manual':
                     manual_mode = True
                     agent_pos = list(start_pos)
-                    last_solve_time = None
-                    solve_method = None
+                    user_start_time = None  # Reset user time
                 elif button_id == 'new_maze':
                     maze = generate_maze(GRID_SIZE)
                     agent_pos = list(start_pos)
-                    last_solve_time = None
-                    solve_method = None
+                    solution_times = []  # Clear solution times for new maze
+                    user_start_time = None
+                    manual_mode = False
         
         # Handle keyboard events in manual mode
         if manual_mode and event.type == pygame.KEYDOWN:
@@ -362,12 +410,7 @@ while True:
     screen.fill(BLACK)
     draw_maze()
     draw_sidebar()
-    
-    # Draw solve time if available
-    if last_solve_time is not None and solve_method is not None:
-        time_text = f"{solve_method} Time: {last_solve_time:.3f}s"
-        time_surface = small_font.render(time_text, True, BLACK)
-        screen.blit(time_surface, (sidebar_x, 250))
+    draw_solution_times()  # Draw all solution times
     
     pygame.display.flip()
     clock.tick(60)

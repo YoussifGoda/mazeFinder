@@ -2,6 +2,7 @@ import pygame
 import random
 import sys
 import time
+import math
 from collections import deque
 
 # Initialize Pygame
@@ -130,10 +131,11 @@ sidebar_x = MAZE_WIDTH + 20
 button_width = SIDEBAR_WIDTH - 40
 button_height = 50
 buttons = {
-    'bfs': Button(sidebar_x, 50, button_width, button_height, "Solve by BFS"),
-    'dfs': Button(sidebar_x, 120, button_width, button_height, "Solve by DFS"),
-    'astar': Button(sidebar_x, 190, button_width, button_height, "Solve by astar"),
-    'manual': Button(sidebar_x, 260, button_width, button_height, "Try Yourself"),
+    'bfs': Button(sidebar_x, 50, button_width, button_height, "BFS"),
+    'dfs': Button(sidebar_x, 120, button_width, button_height, "DFS"),
+    'astar_manhattan': Button(sidebar_x, 190, button_width, button_height, "A* Manhattan"),
+    'astar_euclidean': Button(sidebar_x, 260, button_width, button_height, "A* Euclidean"),
+    'manual': Button(sidebar_x, 330, button_width, button_height, "Try Yourself"),
     'new_maze': Button(sidebar_x, WINDOW_HEIGHT - 70, button_width, button_height, 
                       "New Maze", NEW_MAZE_BUTTON_COLOR, NEW_MAZE_HOVER_COLOR)
 }
@@ -236,10 +238,11 @@ def bfs_solve(maze, start, goal):
 
 import heapq
 
-def astar_solve(maze, start, goal):
+def astar_manhattan_solve(maze, start, goal):
     open_set = [(0, start)]
     closed_set = set()
     parent_map = {}
+    g_score_map = {}
     nodes_visited = 0
 
     while open_set:
@@ -264,15 +267,58 @@ def astar_solve(maze, start, goal):
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
             nx, ny = x + dx, y + dy
             if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in closed_set and maze[nx][ny] == 0:
-                g_score = parent_map.get((x, y), {}).get('g_score', 0) + 1
-                f_score = g_score + heuristic((nx, ny),goal)
+                g_score = g_score_map.get((x, y), 0) + 1
+                f_score = g_score + heuristic_manhattan((nx, ny), goal)
                 heapq.heappush(open_set, (f_score, (nx, ny)))
-                parent_map[(nx, ny)] = {'parent': (x, y), 'g_score': g_score}
+                parent_map[(nx, ny)] = (x, y)
+                g_score_map[(nx, ny)] = g_score
 
     return [], nodes_visited
 
-def heuristic(node,goal): # This is just used for AStar (Manhattan distance)
+def astar_euclidean_solve(maze, start, goal):
+    open_set = [(0, start)]
+    closed_set = set()
+    parent_map = {}
+    g_score_map = {}
+    nodes_visited = 0
+
+    while open_set:
+        current = heapq.heappop(open_set)[1]
+        if current in closed_set:
+            continue
+        closed_set.add(current)
+        nodes_visited += 1
+
+        draw_maze(visited=closed_set)
+        pygame.display.flip()
+        pygame.time.delay(50)
+
+        if current == goal:
+            path = []
+            while current:
+                path.append(current)
+                current = parent_map.get(current)
+            return path[::-1], nodes_visited
+
+        x, y = current
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in closed_set and maze[nx][ny] == 0:
+                g_score = g_score_map.get((x, y), 0) + 1
+                f_score = g_score + heuristic_euclidean((nx, ny), goal)
+                heapq.heappush(open_set, (f_score, (nx, ny)))
+                parent_map[(nx, ny)] = (x, y)
+                g_score_map[(nx, ny)] = g_score
+
+    return [], nodes_visited
+
+def heuristic_manhattan(node,goal): # This is just used for AStar (Manhattan distance)
         return abs(node[0] - goal[0]) + abs(node[1] - goal[1])
+
+def heuristic_euclidean(node,goal): # This is just used for AStar (Euclidean distance)
+    dx = node[0] - goal[0]
+    dy = node[1] - goal[1]
+    return math.sqrt(dx**2 + dy**2)
 
 def show_message(message, duration=2000):
     # Show a message in the center of the maze area.
@@ -304,22 +350,21 @@ def format_time(seconds):
         return f"{minutes}m {seconds:.1f}s"
     return f"{seconds:.3f}s"
 
-def draw_solution_times():
-    # Draw all recorded solution times and stats on the sidebar.
-    start_y = 250
-    for i, sol_time in enumerate(solution_times): # Since we need both the index and solution time, use enumerate
-        time_text = f"{sol_time.method}: {format_time(sol_time.time)}"
-        path_text = f"Path Length: {sol_time.path_length}"
-        nodes_text = f"Nodes Visited: {sol_time.nodes_visited}"
+def draw_solution_time():
+    # Draw the recorded solution time and stats on the sidebar.
+    start_y = 400
 
-        time_surface = small_font.render(time_text, True, BLACK)
-        path_surface = small_font.render(path_text, True, BLACK)
-        nodes_surface = small_font.render(nodes_text, True, BLACK)
+    time_text = f"{solution_time.method}: {format_time(solution_time.time)}"
+    path_text = f"Path Length: {solution_time.path_length}"
+    nodes_text = f"Nodes Visited: {solution_time.nodes_visited}"
 
-        y_offset = start_y + i * 200
-        screen.blit(time_surface, (sidebar_x, y_offset))
-        screen.blit(path_surface, (sidebar_x, y_offset + 20))
-        screen.blit(nodes_surface, (sidebar_x, y_offset + 40))
+    time_surface = small_font.render(time_text, True, BLACK)
+    path_surface = small_font.render(path_text, True, BLACK)
+    nodes_surface = small_font.render(nodes_text, True, BLACK)
+
+    screen.blit(time_surface, (sidebar_x, start_y))
+    screen.blit(path_surface, (sidebar_x, start_y + 20))
+    screen.blit(nodes_surface, (sidebar_x, start_y + 40))
 
 def solve_with_timer(solver_func, maze, start, goal):
     # Run the solver and measure time, nodes visited, and path length.
@@ -411,7 +456,7 @@ clock = pygame.time.Clock()
 manual_mode = False
 last_solve_time = None
 solve_method = None
-solution_times = []  # List to store multiple solution times
+solution_time = None
 user_start_time = None  # Track when user starts solving
 
 
@@ -426,15 +471,19 @@ while True:
             if button.handle_event(event):
                 if button_id == 'bfs':
                      path, solve_time, path_length, nodes_visited = solve_with_timer(bfs_solve, maze, start_pos, goal_pos)
-                     solution_times.append(SolutionTime("BFS", solve_time, path_length, nodes_visited))
+                     solution_time = (SolutionTime("BFS", solve_time, path_length, nodes_visited))
                      move_agent_along_path(path)
                 elif button_id == 'dfs':
                     path, solve_time, path_length, nodes_visited = solve_with_timer(dfs_solve, maze, start_pos, goal_pos)
-                    solution_times.append(SolutionTime("DFS", solve_time, path_length, nodes_visited))
+                    solution_time = (SolutionTime("DFS", solve_time, path_length, nodes_visited))
                     move_agent_along_path(path)
-                elif button_id == 'astar':
-                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_solve, maze, start_pos, goal_pos)
-                    solution_times.append(SolutionTime("ASTAR", solve_time, path_length, nodes_visited))
+                elif button_id == 'astar_manhattan':
+                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_manhattan_solve, maze, start_pos, goal_pos)
+                    solution_time = (SolutionTime("ASTAR MANHATTAN", solve_time, path_length, nodes_visited))
+                    move_agent_along_path(path)
+                elif button_id == 'astar_euclidean':
+                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_euclidean_solve, maze, start_pos, goal_pos)
+                    solution_time = (SolutionTime("ASTAR EUCLIDEAN", solve_time, path_length, nodes_visited))
                     move_agent_along_path(path)
                 elif button_id == 'manual':
                     manual_mode = True
@@ -462,7 +511,8 @@ while True:
     screen.fill(BLACK)
     draw_maze()
     draw_sidebar()
-    draw_solution_times()  # Draw all solution times
+    if solution_time is not None:
+        draw_solution_time()  # Draw all solution times
     
     pygame.display.flip()
     clock.tick(60)

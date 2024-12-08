@@ -239,20 +239,20 @@ def bfs_solve(maze, start, goal):
 import heapq
 
 def astar_manhattan_solve(maze, start, goal):
-    open_set = [(0, start)]
-    closed_set = set()
+    p_queue = [(0, start)]
+    visited = set()
     parent_map = {}
     g_score_map = {}
     nodes_visited = 0
 
-    while open_set:
-        current = heapq.heappop(open_set)[1]
-        if current in closed_set:
+    while p_queue:
+        current = heapq.heappop(p_queue)[1]
+        if current in visited:
             continue
-        closed_set.add(current)
+        visited.add(current)
         nodes_visited += 1
 
-        draw_maze(visited=closed_set)
+        draw_maze(visited)
         pygame.display.flip()
         pygame.time.delay(50)
 
@@ -266,30 +266,30 @@ def astar_manhattan_solve(maze, start, goal):
         x, y = current
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
             nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in closed_set and maze[nx][ny] == 0:
+            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
                 g_score = g_score_map.get((x, y), 0) + 1
                 f_score = g_score + heuristic_manhattan((nx, ny), goal)
-                heapq.heappush(open_set, (f_score, (nx, ny)))
+                heapq.heappush(p_queue, (f_score, (nx, ny)))
                 parent_map[(nx, ny)] = (x, y)
                 g_score_map[(nx, ny)] = g_score
 
     return [], nodes_visited
 
 def astar_euclidean_solve(maze, start, goal):
-    open_set = [(0, start)]
-    closed_set = set()
+    p_queue = [(0, start)]
+    visited = set()
     parent_map = {}
     g_score_map = {}
     nodes_visited = 0
 
-    while open_set:
-        current = heapq.heappop(open_set)[1]
-        if current in closed_set:
+    while p_queue:
+        current = heapq.heappop(p_queue)[1]
+        if current in visited:
             continue
-        closed_set.add(current)
+        visited.add(current)
         nodes_visited += 1
 
-        draw_maze(visited=closed_set)
+        draw_maze(visited)
         pygame.display.flip()
         pygame.time.delay(50)
 
@@ -303,10 +303,10 @@ def astar_euclidean_solve(maze, start, goal):
         x, y = current
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
             nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in closed_set and maze[nx][ny] == 0:
+            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
                 g_score = g_score_map.get((x, y), 0) + 1
                 f_score = g_score + heuristic_euclidean((nx, ny), goal)
-                heapq.heappush(open_set, (f_score, (nx, ny)))
+                heapq.heappush(p_queue, (f_score, (nx, ny)))
                 parent_map[(nx, ny)] = (x, y)
                 g_score_map[(nx, ny)] = g_score
 

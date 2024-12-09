@@ -479,11 +479,11 @@ while True:
                     move_agent_along_path(path)
                 elif button_id == 'astar_manhattan':
                     path, solve_time, path_length, nodes_visited = solve_with_timer(astar_manhattan_solve, maze, start_pos, goal_pos)
-                    solution_time = (SolutionTime("ASTAR MANHATTAN", solve_time, path_length, nodes_visited))
+                    solution_time = (SolutionTime("A* MANH", solve_time, path_length, nodes_visited))
                     move_agent_along_path(path)
                 elif button_id == 'astar_euclidean':
                     path, solve_time, path_length, nodes_visited = solve_with_timer(astar_euclidean_solve, maze, start_pos, goal_pos)
-                    solution_time = (SolutionTime("ASTAR EUCLIDEAN", solve_time, path_length, nodes_visited))
+                    solution_time = (SolutionTime("A* EUCL", solve_time, path_length, nodes_visited))
                     move_agent_along_path(path)
                 elif button_id == 'manual':
                     manual_mode = True

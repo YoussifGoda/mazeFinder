@@ -4,36 +4,41 @@ import sys
 import time
 import math
 from collections import deque
+import heapq
 
 # Initialize Pygame
 pygame.init()
 
-# Constants
-WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
-MAZE_WIDTH = 600
+# Enhanced Constants
+WINDOW_WIDTH, WINDOW_HEIGHT = 1024, 768
+MAZE_WIDTH = 700
 GRID_SIZE = 21
 CELL_SIZE = MAZE_WIDTH // GRID_SIZE
 SIDEBAR_WIDTH = WINDOW_WIDTH - MAZE_WIDTH
 
-# Colors
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
-LIGHT_BLUE = (173, 216, 230)
-BUTTON_COLOR = (200, 200, 200)
-SIDEBAR_COLOR = (150, 150, 150)
-BUTTON_HOVER_COLOR = (180, 180, 180)
-NEW_MAZE_BUTTON_COLOR = (220, 60, 60)
-NEW_MAZE_HOVER_COLOR = (200, 40, 40)
+# Enhanced Color Scheme
+BACKGROUND = (18, 18, 18)
+WALL_COLOR = (40, 44, 52)
+PATH_COLOR = (255, 255, 255)
+VISITED_COLOR = (103, 140, 177, 150)
+SOLUTION_COLOR = (255, 204, 77)
+START_COLOR = (72, 187, 120)
+GOAL_COLOR = (235, 83, 83)
+AGENT_COLOR = (52, 152, 219)
+
+# Button colors
+BUTTON_COLOR = (52, 73, 94)
+BUTTON_HOVER_COLOR = (72, 93, 114)
+BUTTON_TEXT_COLOR = (236, 240, 241)
+NEW_MAZE_BUTTON_COLOR = (192, 57, 43)
+NEW_MAZE_HOVER_COLOR = (231, 76, 60)
 
 # Animation settings
-TRANSITION_SPEED = 5
+TRANSITION_SPEED = 8
 BUTTON_CLICK_DURATION = 100
+FADE_DURATION = 500
 
-class Button:
+class ModernButton:
     def __init__(self, x, y, width, height, text, color=BUTTON_COLOR, hover_color=BUTTON_HOVER_COLOR):
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
@@ -42,28 +47,41 @@ class Button:
         self.hover_color = hover_color
         self.is_hovered = False
         self.click_animation = 0
+        self.alpha = 255
         
     def draw(self, surface):
-        # Calculate button elevation based on click animation
+        target_color = self.hover_color if self.is_hovered else self.base_color
+        current_color = list(self.color)
+        for i in range(3):
+            current_color[i] += (target_color[i] - current_color[i]) * 0.1
+        self.color = tuple(map(int, current_color))
+
         elevation = max(0, 4 - self.click_animation)
         
-        # Draw shadow
-        shadow_rect = self.rect.copy()
-        shadow_rect.y += elevation
-        pygame.draw.rect(surface, (100, 100, 100), shadow_rect)
-        
-        # Draw main button
         button_rect = self.rect.copy()
         button_rect.y -= self.click_animation
-        color = self.hover_color if self.is_hovered else self.color
-        pygame.draw.rect(surface, color, button_rect, border_radius=5)
+        pygame.draw.rect(surface, self.color, button_rect, border_radius=10)
         
-        # Draw text
-        text_surface = font.render(self.text, True, BLACK)
+        gradient = pygame.Surface((button_rect.width, button_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(gradient, (255, 255, 255, 30), gradient.get_rect(), border_radius=10)
+        gradient_rect = gradient.get_rect(topleft=button_rect.topleft)
+        surface.blit(gradient, gradient_rect)
+        
+        font = pygame.font.Font(None, 36)
+        shadow_surface = font.render(self.text, True, (0, 0, 0))
+        text_surface = font.render(self.text, True, BUTTON_TEXT_COLOR)
+        
         text_rect = text_surface.get_rect(center=button_rect.center)
+        shadow_rect = text_rect.copy()
+        shadow_rect.x += 2
+        shadow_rect.y += 2
+        
+        shadow_surface.set_alpha(self.alpha // 2)
+        text_surface.set_alpha(self.alpha)
+        
+        surface.blit(shadow_surface, shadow_rect)
         surface.blit(text_surface, text_rect)
         
-        # Update click animation
         if self.click_animation > 0:
             self.click_animation = max(0, self.click_animation - 0.5)
 
@@ -75,14 +93,36 @@ class Button:
             return True
         return False
 
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.is_hovered = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
-            self.click_animation = 4
-            return True
-        return False
+class ParticleSystem:
+    def __init__(self):
+        self.particles = []
         
+    def create_particle(self, pos, color):
+        angle = random.uniform(0, 2 * math.pi)
+        speed = random.uniform(2, 5)
+        self.particles.append({
+            'pos': list(pos),
+            'vel': [math.cos(angle) * speed, math.sin(angle) * speed],
+            'life': 1.0,
+            'color': color
+        })
+        
+    def update(self):
+        for p in self.particles[:]:
+            p['pos'][0] += p['vel'][0]
+            p['pos'][1] += p['vel'][1]
+            p['life'] -= 0.02
+            if p['life'] <= 0:
+                self.particles.remove(p)
+                
+    def draw(self, surface):
+        for p in self.particles:
+            color = list(p['color'])
+            color.append(int(255 * p['life']))
+            pygame.draw.circle(surface, color, 
+                             (int(p['pos'][0]), int(p['pos'][1])), 
+                             int(3 * p['life']))
+
 class SolutionTime:
     def __init__(self, method, time, path_length, nodes_visited):
         self.method = method
@@ -91,428 +131,402 @@ class SolutionTime:
         self.nodes_visited = nodes_visited
         self.timestamp = pygame.time.get_ticks()
 
-def generate_maze(size):
-    # Generate a solvable random maze using recursive backtracking.
-    maze = [[1 for _ in range(size)] for _ in range(size)]
+class MazeGame:
+    def __init__(self):
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pygame.display.set_caption("Maze Pathfinding Visualizer")
+        
+        self.maze = self.generate_maze(GRID_SIZE)
+        self.start_pos = (1, 1)
+        self.goal_pos = (GRID_SIZE - 2, GRID_SIZE - 2)
+        self.agent_pos = list(self.start_pos)
+        
+        self.particles = ParticleSystem()
+        self.solution_time = None
+        self.manual_mode = False
+        self.user_start_time = None
+        
+        sidebar_x = MAZE_WIDTH + 20
+        button_width = SIDEBAR_WIDTH - 40
+        button_height = 50
+        self.buttons = {
+            'bfs': ModernButton(sidebar_x, 50, button_width, button_height, "BFS"),
+            'dfs': ModernButton(sidebar_x, 120, button_width, button_height, "DFS"),
+            'astar_manhattan': ModernButton(sidebar_x, 190, button_width, button_height, "A* Manhattan"),
+            'astar_euclidean': ModernButton(sidebar_x, 260, button_width, button_height, "A* Euclidean"),
+            'manual': ModernButton(sidebar_x, 330, button_width, button_height, "Manual Mode"),
+            'new_maze': ModernButton(sidebar_x, WINDOW_HEIGHT - 70, button_width, button_height,
+                                   "New Maze", NEW_MAZE_BUTTON_COLOR, NEW_MAZE_HOVER_COLOR)
+        }
 
-    def carve_passages(cx, cy):
-        directions = [(0, 2), (0, -2), (2, 0), (-2, 0)]
-        random.shuffle(directions)
+    def generate_maze(self, size):
+        maze = [[1 for _ in range(size)] for _ in range(size)]
+        
+        def carve_passages(cx, cy):
+            directions = [(0, 2), (0, -2), (2, 0), (-2, 0)]
+            random.shuffle(directions)
+            
+            for dx, dy in directions:
+                nx, ny = cx + dx, cy + dy
+                if 0 < nx < size - 1 and 0 < ny < size - 1 and maze[ny][nx] == 1:
+                    maze[cy + dy // 2][cx + dx // 2] = 0
+                    maze[ny][nx] = 0
+                    carve_passages(nx, ny)
+        
+        maze[1][1] = 0
+        carve_passages(1, 1)
+        maze[size - 2][size - 2] = 0
+        return maze
 
-        for dx, dy in directions:
-            nx, ny = cx + dx, cy + dy
-            if 0 < nx < size and 0 < ny < size and maze[ny][nx] == 1:
-                maze[cy + dy // 2][cx + dx // 2] = 0
-                maze[ny][nx] = 0
-                carve_passages(nx, ny)
+    def format_time(self, seconds):
+        minutes = int(seconds // 60)
+        seconds = seconds % 60
+        if minutes > 0:
+            return f"{minutes}m {seconds:.1f}s"
+        return f"{seconds:.3f}s"
 
-    maze[1][1] = 0
-    carve_passages(1, 1)
-    maze[size - 2][size - 2] = 0
-    return maze
+    def bfs_solve(self, start, goal):
+        queue = deque([start])
+        visited = set()
+        parent_map = {}
+        nodes_visited = 0
 
-# Generate the maze
-maze = generate_maze(GRID_SIZE)
+        while queue:
+            current = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+            nodes_visited += 1
 
-# Find the start and goal positions
-start_pos = (1, 1)
-goal_pos = (GRID_SIZE - 2, GRID_SIZE - 2)
-agent_pos = list(start_pos)
+            self.draw_maze(visited=visited)
+            pygame.display.flip()
+            pygame.time.delay(50)
 
-# Setup Pygame window
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("Maze Solver")
+            if current == goal:
+                path = []
+                while current:
+                    path.append(current)
+                    current = parent_map.get(current)
+                return path[::-1], nodes_visited
 
-font = pygame.font.Font(None, 36)
-small_font = pygame.font.Font(None, 24)
+            x, y = current
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and 
+                    (nx, ny) not in visited and self.maze[nx][ny] == 0):
+                    queue.append((nx, ny))
+                    parent_map[(nx, ny)] = current
+        return [], nodes_visited
 
-# Create buttons
-sidebar_x = MAZE_WIDTH + 20
-button_width = SIDEBAR_WIDTH - 40
-button_height = 50
-buttons = {
-    'bfs': Button(sidebar_x, 50, button_width, button_height, "BFS"),
-    'dfs': Button(sidebar_x, 120, button_width, button_height, "DFS"),
-    'astar_manhattan': Button(sidebar_x, 190, button_width, button_height, "A* Manhattan"),
-    'astar_euclidean': Button(sidebar_x, 260, button_width, button_height, "A* Euclidean"),
-    'manual': Button(sidebar_x, 330, button_width, button_height, "Try Yourself"),
-    'new_maze': Button(sidebar_x, WINDOW_HEIGHT - 70, button_width, button_height, 
-                      "New Maze", NEW_MAZE_BUTTON_COLOR, NEW_MAZE_HOVER_COLOR)
-}
+    def dfs_solve(self, start, goal):
+        stack = [start]
+        visited = set()
+        parent_map = {}
+        nodes_visited = 0
 
-def draw_maze(visited=set(), path=[]):
-    # Draw the maze and agent.
-    for row_idx, row in enumerate(maze):
-        for col_idx, cell in enumerate(row):
-            x, y = col_idx * CELL_SIZE, row_idx * CELL_SIZE
-            if cell == 1:
-                pygame.draw.rect(screen, BLACK, (x, y, CELL_SIZE, CELL_SIZE))
-            elif (row_idx, col_idx) in visited:
-                pygame.draw.rect(screen, LIGHT_BLUE, (x, y, CELL_SIZE, CELL_SIZE))
-            elif (row_idx, col_idx) in path:
-                pygame.draw.rect(screen, YELLOW, (x, y, CELL_SIZE, CELL_SIZE))
-            else:
-                pygame.draw.rect(screen, WHITE, (x, y, CELL_SIZE, CELL_SIZE))
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            nodes_visited += 1
 
-    # Draw start and goal
-    start_x, start_y = start_pos[1] * CELL_SIZE, start_pos[0] * CELL_SIZE
-    goal_x, goal_y = goal_pos[1] * CELL_SIZE, goal_pos[0] * CELL_SIZE
-    pygame.draw.rect(screen, GREEN, (start_x, start_y, CELL_SIZE, CELL_SIZE))
-    pygame.draw.rect(screen, RED, (goal_x, goal_y, CELL_SIZE, CELL_SIZE))
+            self.draw_maze(visited=visited)
+            pygame.display.flip()
+            pygame.time.delay(50)
 
-    # Draw agent
-    agent_x, agent_y = agent_pos[1] * CELL_SIZE, agent_pos[0] * CELL_SIZE
-    pygame.draw.rect(screen, BLUE, (agent_x, agent_y, CELL_SIZE, CELL_SIZE))
+            if current == goal:
+                path = []
+                while current:
+                    path.append(current)
+                    current = parent_map.get(current)
+                return path[::-1], nodes_visited
 
-def draw_sidebar():
-    # Draw the sidebar with buttons.
-    pygame.draw.rect(screen, SIDEBAR_COLOR, (MAZE_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
-    for button in buttons.values():
-        button.draw(screen)  # Pass the screen surface to the draw method
+            x, y = current
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and 
+                    (nx, ny) not in visited and self.maze[nx][ny] == 0):
+                    stack.append((nx, ny))
+                    parent_map[(nx, ny)] = current
+        return [], nodes_visited
 
-def dfs_solve(maze, start, goal):
-    # Solve the maze using DFS with visualization.
-    stack = [start]
-    visited = set()
-    parent_map = {}
-    nodes_visited = 0  # Count nodes visited
-
-    while stack:
-        current = stack.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-        nodes_visited += 1  # Increment nodes visited
-
-        draw_maze(visited=visited)
-        pygame.display.flip()
-        pygame.time.delay(50)
-
-        if current == goal:
-            path = []
-            while current:
-                path.append(current)
-                current = parent_map.get(current)
-            return path[::-1], nodes_visited  # Return path and nodes visited
-
-        x, y = current
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
-                stack.append((nx, ny))
-                parent_map[(nx, ny)] = current
-    return [], nodes_visited  # Return empty path if unsolvable
-
-def bfs_solve(maze, start, goal):
-    # Solve the maze using BFS with visualization.
-    queue = deque([start])
-    visited = set()
-    parent_map = {}
-    nodes_visited = 0  # Count nodes visited
-
-    while queue:
-        current = queue.popleft()
-        if current in visited:
-            continue
-        visited.add(current)
-        nodes_visited += 1  # Increment nodes visited
-
-        draw_maze(visited=visited)
-        pygame.display.flip()
-        pygame.time.delay(50)
-
-        if current == goal:
-            path = []
-            while current:
-                path.append(current)
-                current = parent_map.get(current)
-            return path[::-1], nodes_visited  # Return path and nodes visited
-
-        x, y = current
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
-                queue.append((nx, ny))
-                parent_map[(nx, ny)] = current
-    return [], nodes_visited
-
-import heapq
-
-def astar_manhattan_solve(maze, start, goal):
-    p_queue = [(0, start)]
-    visited = set()
-    parent_map = {}
-    g_score_map = {}
-    nodes_visited = 0
-
-    while p_queue:
-        current = heapq.heappop(p_queue)[1]
-        if current in visited:
-            continue
-        visited.add(current)
-        nodes_visited += 1
-
-        draw_maze(visited)
-        pygame.display.flip()
-        pygame.time.delay(50)
-
-        if current == goal:
-            path = []
-            while current:
-                path.append(current)
-                current = parent_map.get(current)
-            return path[::-1], nodes_visited
-
-        x, y = current
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
-                g_score = g_score_map.get((x, y), 0) + 1
-                f_score = g_score + heuristic_manhattan((nx, ny), goal)
-                heapq.heappush(p_queue, (f_score, (nx, ny)))
-                parent_map[(nx, ny)] = (x, y)
-                g_score_map[(nx, ny)] = g_score
-
-    return [], nodes_visited
-
-def astar_euclidean_solve(maze, start, goal):
-    p_queue = [(0, start)]
-    visited = set()
-    parent_map = {}
-    g_score_map = {}
-    nodes_visited = 0
-
-    while p_queue:
-        current = heapq.heappop(p_queue)[1]
-        if current in visited:
-            continue
-        visited.add(current)
-        nodes_visited += 1
-
-        draw_maze(visited)
-        pygame.display.flip()
-        pygame.time.delay(50)
-
-        if current == goal:
-            path = []
-            while current:
-                path.append(current)
-                current = parent_map.get(current)
-            return path[::-1], nodes_visited
-
-        x, y = current
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in visited and maze[nx][ny] == 0:
-                g_score = g_score_map.get((x, y), 0) + 1
-                f_score = g_score + heuristic_euclidean((nx, ny), goal)
-                heapq.heappush(p_queue, (f_score, (nx, ny)))
-                parent_map[(nx, ny)] = (x, y)
-                g_score_map[(nx, ny)] = g_score
-
-    return [], nodes_visited
-
-def heuristic_manhattan(node,goal): # This is just used for AStar (Manhattan distance)
+    def heuristic_manhattan(self, node, goal):
         return abs(node[0] - goal[0]) + abs(node[1] - goal[1])
 
-def heuristic_euclidean(node,goal): # This is just used for AStar (Euclidean distance)
-    dx = node[0] - goal[0]
-    dy = node[1] - goal[1]
-    return math.sqrt(dx**2 + dy**2)
+    def heuristic_euclidean(self, node, goal):
+        return math.sqrt((node[0] - goal[0])**2 + (node[1] - goal[1])**2)
 
-def show_message(message, duration=2000):
-    # Show a message in the center of the maze area.
-    text_surface = font.render(message, True, BLACK)
-    text_rect = text_surface.get_rect(center=(MAZE_WIDTH // 2, WINDOW_HEIGHT // 2))
-    background_rect = text_rect.inflate(20, 20)
-    
-    # Store the current time
-    start_time = pygame.time.get_ticks()
-    
-    while pygame.time.get_ticks() - start_time < duration:
-        # Draw the current state
-        screen.fill(BLACK)
-        draw_maze()
-        draw_sidebar()
-        
-        # Draw message with background
-        pygame.draw.rect(screen, WHITE, background_rect)
-        screen.blit(text_surface, text_rect)
-        
-        pygame.display.flip()
-        pygame.time.delay(10)
+    def astar_solve(self, start, goal, heuristic_func):
+        p_queue = [(0, start)]
+        visited = set()
+        parent_map = {}
+        g_score_map = {start: 0}
+        nodes_visited = 0
 
-def format_time(seconds):
-    # Return string that represents time (takes secnds as input)
-    minutes = int(seconds // 60)
-    seconds = seconds % 60
-    if minutes > 0:
-        return f"{minutes}m {seconds:.1f}s"
-    return f"{seconds:.3f}s"
+        while p_queue:
+            _, current = heapq.heappop(p_queue)
+            if current in visited:
+                continue
+            visited.add(current)
+            nodes_visited += 1
 
-def draw_solution_time():
-    # Draw the recorded solution time and stats on the sidebar.
-    start_y = 400
-
-    time_text = f"{solution_time.method}: {format_time(solution_time.time)}"
-    path_text = f"Path Length: {solution_time.path_length}"
-    nodes_text = f"Nodes Visited: {solution_time.nodes_visited}"
-
-    time_surface = small_font.render(time_text, True, BLACK)
-    path_surface = small_font.render(path_text, True, BLACK)
-    nodes_surface = small_font.render(nodes_text, True, BLACK)
-
-    screen.blit(time_surface, (sidebar_x, start_y))
-    screen.blit(path_surface, (sidebar_x, start_y + 20))
-    screen.blit(nodes_surface, (sidebar_x, start_y + 40))
-
-def solve_with_timer(solver_func, maze, start, goal):
-    # Run the solver and measure time, nodes visited, and path length.
-    start_time = time.time()
-    path, nodes_visited = solver_func(maze, start, goal)
-    end_time = time.time()
-    path_length = len(path)
-    return path, end_time - start_time, path_length, nodes_visited
-
-def draw_solve_time(solve_time, x, y):
-    #Draw the solving time on the sidebar.
-    time_text = f"Time: {solve_time:.3f}s"
-    time_surface = small_font.render(time_text, True, BLACK)
-    screen.blit(time_surface, (x, y))
-
-# Modified movement functions for smoother animation
-def move_agent_along_path(path):
-    # Move the agent smoothly along the solution path.
-    global agent_pos
-    current_pos = list(agent_pos)
-    
-    for next_pos in path:
-        # Animate movement between current and next position
-        start_x, start_y = current_pos
-        end_x, end_y = next_pos
-        
-        for t in range(TRANSITION_SPEED + 1):
-            progress = t / TRANSITION_SPEED
-            current_x = start_x + (end_x - start_x) * progress
-            current_y = start_y + (end_y - start_y) * progress
-            agent_pos = [current_x, current_y]
-            
-            screen.fill(BLACK)
-            draw_maze(path=path)
-            draw_sidebar()
+            self.draw_maze(visited=visited)
             pygame.display.flip()
-            pygame.time.delay(20)
-        
-        current_pos = list(next_pos)
-    
-    agent_pos = list(path[-1])
+            pygame.time.delay(50)
 
-def try_move(dx, dy):
-    # Try to move the agent with smooth animation.
-    global agent_pos, user_start_time
-    new_x, new_y = agent_pos[0] + dx, agent_pos[1] + dy
-    
-    # Start timing on first move
-    if user_start_time is None and manual_mode:
-        user_start_time = time.time()
-    
-    if (0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE and 
-        maze[new_x][new_y] == 0):
-        # Animate movement
-        start_x, start_y = agent_pos
-        for t in range(TRANSITION_SPEED + 1): # This makes the agent smoother by altering their speed through the maze in increments instead of by full bloks
-            progress = t / TRANSITION_SPEED
-            current_x = start_x + dx * progress
-            current_y = start_y + dy * progress
-            agent_pos = [current_x, current_y]
+            if current == goal:
+                path = []
+                while current:
+                    path.append(current)
+                    current = parent_map.get(current)
+                return path[::-1], nodes_visited
+
+            x, y = current
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and 
+                    (nx, ny) not in visited and self.maze[nx][ny] == 0):
+                    g_score = g_score_map[current] + 1
+                    if (nx, ny) not in g_score_map or g_score < g_score_map[(nx, ny)]:
+                        g_score_map[(nx, ny)] = g_score
+                        f_score = g_score + heuristic_func((nx, ny), goal)
+                        heapq.heappush(p_queue, (f_score, (nx, ny)))
+                        parent_map[(nx, ny)] = current
+        return [], nodes_visited
+
+    def move_agent_along_path(self, path):
+        for next_pos in path:
+            start_x, start_y = self.agent_pos
+            end_x, end_y = next_pos
             
-            screen.fill(BLACK)
-            draw_maze()
-            draw_sidebar()
+            for t in range(TRANSITION_SPEED + 1):
+                progress = t / TRANSITION_SPEED
+                current_x = start_x + (end_x - start_x) * progress
+                current_y = start_y + (end_y - start_y) * progress
+                self.agent_pos = [current_x, current_y]
+                
+                self.screen.fill(BACKGROUND)
+                self.draw_maze(path=path)
+                self.draw_sidebar()
+                pygame.display.flip()
+                pygame.time.delay(20)
+
+            self.agent_pos = list(next_pos)
+            # Create particles at agent position
+            screen_x = self.agent_pos[1] * CELL_SIZE + CELL_SIZE // 2
+            screen_y = self.agent_pos[0] * CELL_SIZE + CELL_SIZE // 2
+            for _ in range(3):
+                self.particles.create_particle((screen_x, screen_y), AGENT_COLOR)
+
+    def try_move(self, dx, dy):
+        if self.user_start_time is None and self.manual_mode:
+            self.user_start_time = time.time()
+        
+        new_x = self.agent_pos[0] + dx
+        new_y = self.agent_pos[1] + dy
+        
+        if (0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE and 
+            self.maze[new_x][new_y] == 0):
+            start_x, start_y = self.agent_pos
+            for t in range(TRANSITION_SPEED + 1):
+                progress = t / TRANSITION_SPEED
+                current_x = start_x + dx * progress
+                current_y = start_y + dy * progress
+                self.agent_pos = [current_x, current_y]
+                
+                self.screen.fill(BACKGROUND)
+                self.draw_maze()
+                self.draw_sidebar()
+                pygame.display.flip()
+                pygame.time.delay(5)
+            
+            self.agent_pos = [new_x, new_y]
+            
+            if (new_x, new_y) == self.goal_pos and self.manual_mode:
+                end_time = time.time()
+                solve_time = end_time - self.user_start_time
+                self.solution_time = SolutionTime("Manual", solve_time, 0, 0)
+                pygame.time.delay(500)
+                self.agent_pos = list(self.start_pos)
+                self.user_start_time = None
+
+    def handle_button_click(self, button_id):
+        if button_id == 'bfs':
+            path, nodes_visited = self.bfs_solve(self.start_pos, self.goal_pos)
+            solve_time = time.time()
+            self.solution_time = SolutionTime("BFS", solve_time, len(path), nodes_visited)
+            self.move_agent_along_path(path)
+            
+        elif button_id == 'dfs':
+            path, nodes_visited = self.dfs_solve(self.start_pos, self.goal_pos)
+            solve_time = time.time()
+            self.solution_time = SolutionTime("DFS", solve_time, len(path), nodes_visited)
+            self.move_agent_along_path(path)
+            
+        elif button_id == 'astar_manhattan':
+            path, nodes_visited = self.astar_solve(self.start_pos, self.goal_pos, self.heuristic_manhattan)
+            solve_time = time.time()
+            self.solution_time = SolutionTime("A* Manhattan", solve_time, len(path), nodes_visited)
+            self.move_agent_along_path(path)
+            
+        elif button_id == 'astar_euclidean':
+            path, nodes_visited = self.astar_solve(self.start_pos, self.goal_pos, self.heuristic_euclidean)
+            solve_time = time.time()
+            self.solution_time = SolutionTime("A* Euclidean", solve_time, len(path), nodes_visited)
+            self.move_agent_along_path(path)
+            
+        elif button_id == 'manual':
+            self.manual_mode = True
+            self.agent_pos = list(self.start_pos)
+            self.user_start_time = None
+            self.solution_time = None
+            
+        elif button_id == 'new_maze':
+            self.maze = self.generate_maze(GRID_SIZE)
+            self.agent_pos = list(self.start_pos)
+            self.solution_time = None
+            self.user_start_time = None
+            self.manual_mode = False
+
+    def handle_keyboard_input(self, key):
+        if key == pygame.K_UP:
+            self.try_move(-1, 0)
+        elif key == pygame.K_DOWN:
+            self.try_move(1, 0)
+        elif key == pygame.K_LEFT:
+            self.try_move(0, -1)
+        elif key == pygame.K_RIGHT:
+            self.try_move(0, 1)
+
+    def draw_cell(self, x, y, color, surface=None):
+        if surface is None:
+            surface = self.screen
+            
+        rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+        if color == WALL_COLOR:
+            pygame.draw.rect(surface, color, rect)
+            pygame.draw.rect(surface, (30, 34, 42), rect, 1)
+        else:
+            pygame.draw.rect(surface, color, rect)
+            if color != BACKGROUND:
+                gradient = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+                pygame.draw.rect(gradient, (255, 255, 255, 20), gradient.get_rect())
+                surface.blit(gradient, rect)
+
+    def draw_maze(self, visited=set(), path=[]):
+        maze_surface = pygame.Surface((MAZE_WIDTH, MAZE_WIDTH))
+        maze_surface.fill(BACKGROUND)
+        
+        for row_idx, row in enumerate(self.maze):
+            for col_idx, cell in enumerate(row):
+                if cell == 1:
+                    self.draw_cell(row_idx, col_idx, WALL_COLOR, maze_surface)
+                elif (row_idx, col_idx) in visited:
+                    self.draw_cell(row_idx, col_idx, VISITED_COLOR, maze_surface)
+                elif (row_idx, col_idx) in path:
+                    self.draw_cell(row_idx, col_idx, SOLUTION_COLOR, maze_surface)
+                else:
+                    self.draw_cell(row_idx, col_idx, PATH_COLOR, maze_surface)
+
+        self.draw_cell(self.start_pos[0], self.start_pos[1], START_COLOR, maze_surface)
+        self.draw_cell(self.goal_pos[0], self.goal_pos[1], GOAL_COLOR, maze_surface)
+
+        # Draw agent with glow effect
+        agent_x = int(self.agent_pos[1] * CELL_SIZE)
+        agent_y = int(self.agent_pos[0] * CELL_SIZE)
+        
+        glow_surface = pygame.Surface((CELL_SIZE * 3, CELL_SIZE * 3), pygame.SRCALPHA)
+        for radius in range(CELL_SIZE * 2, 0, -2):
+            alpha = int(100 * (radius / (CELL_SIZE * 2)))
+            pygame.draw.circle(glow_surface, (*AGENT_COLOR[:3], alpha), 
+                             (CELL_SIZE * 1.5, CELL_SIZE * 1.5), radius)
+        
+        maze_surface.blit(glow_surface, (agent_x - CELL_SIZE, agent_y - CELL_SIZE))
+        pygame.draw.rect(maze_surface, AGENT_COLOR, (agent_x, agent_y, CELL_SIZE, CELL_SIZE))
+
+        # Grid overlay
+        for i in range(GRID_SIZE + 1):
+            pygame.draw.line(maze_surface, (50, 50, 50), 
+                           (i * CELL_SIZE, 0), 
+                           (i * CELL_SIZE, MAZE_WIDTH))
+            pygame.draw.line(maze_surface, (50, 50, 50), 
+                           (0, i * CELL_SIZE), 
+                           (MAZE_WIDTH, i * CELL_SIZE))
+
+        self.screen.blit(maze_surface, (0, 0))
+
+    def draw_sidebar(self):
+        sidebar_surface = pygame.Surface((SIDEBAR_WIDTH, WINDOW_HEIGHT))
+        for y in range(WINDOW_HEIGHT):
+            alpha = int(255 * (1 - y / WINDOW_HEIGHT))
+            pygame.draw.line(sidebar_surface, (*BACKGROUND, alpha), 
+                           (0, y), (SIDEBAR_WIDTH, y))
+        self.screen.blit(sidebar_surface, (MAZE_WIDTH, 0))
+
+        for button in self.buttons.values():
+            button.draw(self.screen)
+
+        if self.solution_time:
+            self.draw_solution_stats()
+
+    def draw_solution_stats(self):
+        if not self.solution_time:
+            return
+            
+        font = pygame.font.Font(None, 32)
+        small_font = pygame.font.Font(None, 24)
+        
+        stats_surface = pygame.Surface((SIDEBAR_WIDTH - 40, 100), pygame.SRCALPHA)
+        pygame.draw.rect(stats_surface, (*BUTTON_COLOR, 200), 
+                        stats_surface.get_rect(), border_radius=10)
+        
+        y_offset = 10
+        stats = [
+            f"{self.solution_time.method}",
+            f"Time: {self.format_time(self.solution_time.time)}",
+            f"Path Length: {self.solution_time.path_length}",
+            f"Nodes Visited: {self.solution_time.nodes_visited}"
+        ]
+        
+        for i, stat in enumerate(stats):
+            color = BUTTON_TEXT_COLOR if i == 0 else (200, 200, 200)
+            text = (font if i == 0 else small_font).render(stat, True, color)
+            stats_surface.blit(text, (10, y_offset))
+            y_offset += 25
+            
+        self.screen.blit(stats_surface, (MAZE_WIDTH + 20, 400))
+
+    def run(self):
+        clock = pygame.time.Clock()
+        running = True
+        
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                
+                for button_id, button in self.buttons.items():
+                    if button.handle_event(event):
+                        self.handle_button_click(button_id)
+                
+                if self.manual_mode and event.type == pygame.KEYDOWN:
+                    self.handle_keyboard_input(event.key)
+            
+            self.particles.update()
+            
+            self.screen.fill(BACKGROUND)
+            self.draw_maze()
+            self.draw_sidebar()
+            self.particles.draw(self.screen)
+            
             pygame.display.flip()
-            pygame.time.delay(5)
+            clock.tick(60)
         
-        agent_pos = [new_x, new_y]
-        
-        # Check if goal is reached
-        if (new_x, new_y) == goal_pos and manual_mode:
-            end_time = time.time()
-            solve_time = end_time - user_start_time
-            #solution_times.append(SolutionTime("Manual", solve_time))
-            #show_message(f"Goal Reached! Time: {format_time(solve_time)}")
-            pygame.time.delay(500)
-            agent_pos = list(start_pos)
-            user_start_time = None
+        pygame.quit()
+        sys.exit()
 
-
-
-
-
-
-
-
-# Main game loop
-clock = pygame.time.Clock()
-manual_mode = False
-last_solve_time = None
-solve_method = None
-solution_time = None
-user_start_time = None  # Track when user starts solving
-
-
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        
-        # Handle button events
-        for button_id, button in buttons.items():
-            if button.handle_event(event):
-                if button_id == 'bfs':
-                     path, solve_time, path_length, nodes_visited = solve_with_timer(bfs_solve, maze, start_pos, goal_pos)
-                     solution_time = (SolutionTime("BFS", solve_time, path_length, nodes_visited))
-                     move_agent_along_path(path)
-                elif button_id == 'dfs':
-                    path, solve_time, path_length, nodes_visited = solve_with_timer(dfs_solve, maze, start_pos, goal_pos)
-                    solution_time = (SolutionTime("DFS", solve_time, path_length, nodes_visited))
-                    move_agent_along_path(path)
-                elif button_id == 'astar_manhattan':
-                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_manhattan_solve, maze, start_pos, goal_pos)
-                    solution_time = (SolutionTime("A* MANH", solve_time, path_length, nodes_visited))
-                    move_agent_along_path(path)
-                elif button_id == 'astar_euclidean':
-                    path, solve_time, path_length, nodes_visited = solve_with_timer(astar_euclidean_solve, maze, start_pos, goal_pos)
-                    solution_time = (SolutionTime("A* EUCL", solve_time, path_length, nodes_visited))
-                    move_agent_along_path(path)
-                elif button_id == 'manual':
-                    manual_mode = True
-                    agent_pos = list(start_pos)
-                    user_start_time = None  # Reset user time
-                elif button_id == 'new_maze':
-                    maze = generate_maze(GRID_SIZE)
-                    agent_pos = list(start_pos)
-                    solution_times = []  # Clear solution times for new maze
-                    user_start_time = None
-                    manual_mode = False
-        
-        # Handle keyboard events in manual mode
-        if manual_mode and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
-                try_move(-1, 0)
-            elif event.key == pygame.K_DOWN:
-                try_move(1, 0)
-            elif event.key == pygame.K_LEFT:
-                try_move(0, -1)
-            elif event.key == pygame.K_RIGHT:
-                try_move(0, 1)
-
-    # Draw everything
-    screen.fill(BLACK)
-    draw_maze()
-    draw_sidebar()
-    if solution_time is not None:
-        draw_solution_time()  # Draw all solution times
-    
-    pygame.display.flip()
-    clock.tick(60)
+# Create and run game
+if __name__ == "__main__":
+    game = MazeGame()
+    game.run()
